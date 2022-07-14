@@ -1,0 +1,225 @@
+---
+title: "Section 3"
+author: "Haga, Chihiro"
+date: '2022-07-14'
+output: html_document
+---
+
+## 準備
+
+パッケージをロードしましょう。
+
+```{r}
+library(tidyverse)
+library(palmerpenguins)
+```
+
+ペンギンのデータセットを使います。ちょっとウェブサイトを見に行こう。
+
+<https://allisonhorst.github.io/palmerpenguins/>
+
+## Section 3.1 ggplotはどう動くのか
+
+-   視覚化は、線・形状・色を用いたデータ表現である
+
+    -   「データの変数」 - 「プロットに含まれる変数」の間の構造化された関係をマッピングと呼ぶぞ
+
+-   ggplotでは、審美的要素のマッピング (aesthetic mappings) を、以下を組み合わせて指定する
+
+    -   どのデータを使うのか、データの中のどの変数をaestheticsとして論理的にマップするのかを指定する "ggplot"関数
+
+    -   作りたいグラフの種類を指定する "geom" 関数
+
+    -   見栄えを整える"scale" "labs" "theme"関数
+
+## Section 3.2 tidyデータにすると徳なことが多い
+
+wide formatなデータは人にはみやすいが、コンピュータにはわかりにくい
+
+```{r }
+penguins_df <- palmerpenguins::penguins
+head(penguins_df) # 先頭の6行だけ表示
+```
+
+long-format (tidy) なデータは人には読み取りにくいが、コンピュータにはわかりやすい。ggplotを使うときはこっちに変換することが多い。今回はしません。詳しくは付録A1.3をみてね。
+
+```{r }
+penguins_tidy_df <- tidyr::pivot_longer(penguins, cols = bill_length_mm:body_mass_g)
+head(penguins_tidy_df)
+```
+
+## 3.3 マッピングがデータと表示物を結びつける
+
+ggplotを使う限り、プロットの作り方はみんな一緒。
+
+-   Step 1: ggplot関数にプロットしたいデータを渡しつつ、aes関数で軸・色・形とデータの要素を紐づける
+
+-   Step 2: geom_関数でどんなプロットを作りたいかを指定する
+
+-   Step 3: タイトル・軸タイトル・備考を書く
+
+-   Step 4: グラフを調整する
+
+では、各ステップを見ていこう。
+
+### Step 1. 紐づける
+
+とりあえずでーたをggplotに渡してみる
+
+```{r}
+p_penguin <- ggplot(data = penguins_df)
+plot(p_penguin)
+```
+
+データのどの列をx軸とy軸にするかを指定してみる。
+
+以下は、「描画したいデータはpenguins_dfで、x軸はflipper_length_mm、y軸はbody_mass_gです」という意味。
+
+```{r}
+p_penguin <- ggplot(data = penguins_df,
+                    aes(x = flipper_length_mm,
+                        y = body_mass_g))
+p_penguin
+```
+
+### Step 2. 散布図にしてみようか
+
+以下は、「描画したいデータはpenguins_dfで、x軸はflipper_length_mm、y軸はbody_mass_gです。あ、プロットのタイプは散布図でお願いします！」という意味。
+
+```{r}
+p_penguin <- ggplot(data = penguins_df,
+                    aes(x = flipper_length_mm,
+                        y = body_mass_g)) +
+  geom_point()
+p_penguin
+```
+
+## Section 3.5 審美的要素(aesthetics)のマッピングとテーマの設定
+
+「描画したいデータはpenguins_dfで、x軸はflipper_length_mm、y軸はbody_mass_gです。**あ、ペンギンの種類ごとに色を分けたいなと思ってます。**で、プロットのタイプは散布図でお願いします！」
+
+```{r}
+p_penguin <- ggplot(data = penguins_df,
+                    aes(x = flipper_length_mm,
+                        y = body_mass_g,
+                        color = species)) +
+  geom_point()
+p_penguin
+```
+
+「**えーと、ペンギンの種類の色はなんかこう、別なやつないですかねえ**」
+
+ggplotの美しいカラーテーマは例えば
+
+-   <https://r-graph-gallery.com/ggplot2-color.html>
+
+-   <https://ggplot2-book.org/scale-colour.html#scale-colour>
+
+-   こんなのも <https://ewenme.github.io/ghibli/>
+
+```{r}
+p_penguin <- ggplot(data = penguins_df,
+                    aes(x = flipper_length_mm,
+                        y = body_mass_g,
+                        color = species)) +
+  geom_point() +
+  scale_color_brewer(palette = 'Set2')
+p_penguin
+```
+
+「**なんか背景を論文投稿用とかプレゼン用に見栄えを良くしたいんですよ**」
+
+ggplotの美しいカラーテーマは例えば
+
+-   <https://r-graph-gallery.com/ggplot2-color.html>
+
+-   <https://ggplot2-book.org/scale-colour.html#scale-colour>
+
+-   こんなのも <https://ewenme.github.io/ghibli/>
+
+```{r}
+p_penguin <- ggplot(data = penguins_df,
+                    aes(x = flipper_length_mm,
+                        y = body_mass_g,
+                        color = species)) +
+  geom_point() +
+  scale_color_brewer(palette = 'Set2') +
+  theme_classic()
+p_penguin
+```
+
+```{r}
+p_penguin <- ggplot(data = penguins_df,
+                    aes(x = flipper_length_mm,
+                        y = body_mass_g,
+                        color = species)) +
+  geom_point() +
+  scale_color_brewer(palette = 'Set2') +
+  theme_minimal()
+p_penguin
+```
+
+「いいですね！ついでに**軸のタイトルと凡例のタイトル**変えたいです！」
+
+```{r}
+p_penguin <- ggplot(data = penguins_df,
+                    aes(x = flipper_length_mm,
+                        y = body_mass_g,
+                        color = species)) +
+  geom_point() +
+  scale_color_brewer(palette = 'Set2') +
+  labs(x = 'Flipper length (mm)',
+       y = 'Body mass (g)',
+       color = 'Penguin species') +
+  theme_minimal()
+p_penguin
+```
+
+「もう一個だけいいですか？**図のタイトル**と**キャプション**を追加したくて・・・」
+
+```{r}
+p_penguin <- ggplot(data = penguins_df,
+                    aes(x = flipper_length_mm,
+                        y = body_mass_g,
+                        color = species)) +
+  geom_point() +
+  scale_color_brewer(palette = 'Set2') +
+  labs(x = 'Flipper length (mm)',
+       y = 'Body mass (g)',
+       color = 'Penguin species',
+       title = 'Penguin size, Palmer Station LTER',
+       subtitle = 'Flipper length and body mass for Adelie, Chinstrap, and Gentoo Penguins',
+       caption = 'Data was provided by palmerpenguins v0.1.0 package.') +
+  theme_minimal()
+p_penguin
+```
+
+## 3.7 保存しよう！
+
+保存するときの形式は2つ。ベクター形式で保存しとくと後で幸せ。
+
+-   ベクター形式
+
+    -   svg
+
+    -   pdf
+
+-   ラスター形式
+
+    -   jpeg
+
+    -   png
+
+「このプロジェクトフォルダ内のfiguresフォルダの中に、ss3-flipper-length-vs-body-mass.pdfと言う名前でファイルを保存してください。保存するのはp_penguinで、画像のサイズは縦12cm横18cmでお願いします。」
+
+```{r}
+ggsave(here::here('figures', 'ss3-flipper-length-vs-body-mass.pdf'),
+       p_penguin, height = 12, width = 16, units = 'cm')
+```
+
+「あ、ごめんなさい、やっぱりPNG形式がいいです」
+
+```{r}
+ggsave(here::here('figures', 'ss3-flipper-length-vs-body-mass.png'),
+       p_penguin, height = 12, width = 16, units = 'cm')
+```
