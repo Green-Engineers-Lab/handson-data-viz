@@ -1,0 +1,214 @@
+---
+title: "Section 4 and 5"
+author: "Haga, Chihiro"
+date: '2022-07-19'
+output: html_document
+---
+
+## 4章 正しい数値の示し方
+
+今日のテーマ：ggplotの主なワーク不rーについての理解を進め、作成可能な図のレパートリーを広げる
+
+```{r}
+library(tidyverse)
+library(gapminder)
+```
+
+### 4.1 文法としては正しいが意味をなさない
+
+-   ggplotは2005年にウィルキンソンによって開発されたgrammar of graphicsというアイディアを実装している
+
+-   ggplotの文法は正しいが、意図した記述を自分たちができていない、次のような妙な図がまれによくできる。
+
+### 4.2 グループ別データに対応するaethetics
+
+「gapminderデータセットで、各国の国民一人当たりのGDPの推移を可視化してみたいです。横軸はyear, 縦軸はgdpPercapで、geom_line()関数で、時系列折線プロットを表示してください。」
+
+```{r}
+p <- ggplot(data = gapminder,
+            mapping = aes(x = year, 
+                          y = gdpPercap)) +
+  geom_line()
+plot(p)
+```
+
+#### How to fix?
+
+この例はほんとによくあるのでめげてはいけない。先程の作図では、ggplotは国別にデータが別れていることを知らない。こちらがグループ分けのために必要な情報をggplotに渡し忘れているだけである。
+
+「あ、ごめんなさい、countryの情報でデータをグループ分けしてくださいね」
+
+```{r}
+p <- ggplot(data = gapminder,
+            mapping = aes(x = year, 
+                          y = gdpPercap)) +
+  geom_line(aes(group = country)) # この設定が必要だった！
+plot(p)
+```
+
+### 4.3 複数の図を並べるためのfacet_wrap() / facet_grid()
+
+上手く描画できたのはいいとして、プロットが煩雑で傾向を細かく分析するのは難しい。そこで、facet_wrap / facet_grid関数を使って、データを**層別化**して複数の図を並べて表示するパネル形式の図を作りたい。
+
+#### 1つのカテゴリで層別化 (facet_wrap())
+
+「じゃあ大陸別にパネルを分けてもらえますか？」
+
+```{r}
+p <- ggplot(data = gapminder,
+            mapping = aes(x = year, 
+                          y = gdpPercap)) +
+  geom_line(aes(group = country)) +
+  facet_wrap(~ continent) # ~はチルダ記号。continentごとに分けてくれの意味。
+plot(p)
+```
+
+「ついでにパネルは縦方向に並べてもらっていいですか？ラベルも追加してください。」
+
+```{r}
+p <- ggplot(data = gapminder,
+            mapping = aes(x = year, 
+                          y = gdpPercap)) +
+  geom_line(aes(group = country)) +
+  facet_wrap(~ continent, ncol = 5) +
+  labs(x = 'Year', y = 'GDP per capita', 
+       title = 'GDP per capita on Five Continents')
+plot(p)
+```
+
+「ついでにパネルは縦方向に並べてもらっていいですか？ラベルも追加してください。」
+
+```{r}
+p <- ggplot(data = gapminder,
+            mapping = aes(x = year, 
+                          y = gdpPercap)) +
+  geom_line(aes(group = country)) +
+  facet_wrap(~ continent, ncol = 5) +
+  labs(x = 'Year', y = 'GDP per capita', 
+       title = 'GDP per capita on Five Continents')
+plot(p)
+```
+
+「縦軸は対数にして、ドルマークをつけてくれます？ついでに平滑化曲線を追加したいです。ついでにx軸を見やすくしてください。」
+
+```{r}
+p <- ggplot(data = gapminder,
+            mapping = aes(x = year, 
+                          y = gdpPercap)) +
+  geom_line(aes(group = country), 
+            color  = 'grey70') + # greyXXで灰色の濃さを指定できる
+  geom_smooth(size = 1.1, method = 'loess', se = FALSE) +
+  scale_y_log10(labels = scales::dollar) +
+  facet_wrap(~ continent, ncol = 5) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  labs(x = 'Year', y = 'log GDP per capita', 
+       title = 'GDP per capita on Five Continents')
+plot(p)
+```
+
+#### 2つのカテゴリで層別化
+ペンギンを種別・
+
+```{r}
+head(palmerpenguins::penguins)
+p <- palmerpenguins::penguins %>% 
+  na.omit() %>% 
+  ggplot(mapping = aes(x = flipper_length_mm, 
+                       y = body_mass_g,
+                       color = species)) +
+  geom_point(color  = 'grey70') + # greyXXで灰色の濃さを指定できる
+  geom_smooth(size = 1.1, method = 'loess') +
+  facet_grid(sex ~ island) +
+  labs(x = 'Flipper length (mm)', y = 'Body mass (g)', 
+       title = 'Flipper length and body mass by species')
+plot(p)
+```
+
+
+### 4.6 ヒストグラムと密度プロット
+ヒストグラム = 連続変数をいくつかの区分(bin)に分割し、それぞれのbinの中の観測値がいくつあるか(頻度)を数えることで、連続変数を要約する手法。
+
+```{r}
+p <- ggplot(data = midwest,
+            mapping = aes(x = area)) +
+  geom_histogram()
+plot(p)
+```
+
+bin数は手動で変えられる。
+```{r}
+p <- ggplot(data = midwest,
+            mapping = aes(x = area)) +
+  geom_histogram(bins = 10)
+plot(p)
+```
+ヒストグラムで複数の変数の要約にも使える。
+https://stats.biopapyrus.jp/r/ggplot/geom_histogram.html
+が、積み上げヒストグラムは読み解くのが難しいし、
+```{r}
+oh_wi <- c('OH', 'WI')
+p <- ggplot(data = subset(midwest, subset = state %in% oh_wi),
+            mapping = aes(x = percollege, fill = state)) +
+  geom_histogram(alpha = 0.4, bins = 20)
+plot(p)
+```
+
+ヒストグラムを重ねるのも読みづらいので、
+```{r}
+oh_wi <- c('OH', 'WI')
+p <- ggplot(data = subset(midwest, subset = state %in% oh_wi),
+            mapping = aes(x = percollege, fill = state, alpha = 0.4)) +
+  geom_histogram(position = 'identity', alpha = 0.4, bins = 20)
+plot(p)
+```
+
+どうしてもやるならfacetするのが無難
+```{r}
+oh_wi <- c('OH', 'WI')
+p <- ggplot(data = subset(midwest, subset = state %in% oh_wi),
+            mapping = aes(x = percollege, fill = state)) +
+  geom_histogram(alpha = 0.4, bins = 20) + 
+  facet_wrap(~state)
+plot(p)
+```
+
+もしくは、geom_density()関数で、対象となる変数のカーネル密度推定値を計算して分布を図示するのも選択肢の一つ。
+```{r}
+p <- ggplot(data = midwest,
+            mapping = aes(x = percollege, color = state, fill = state)) +
+  geom_density(alpha = 0.3)
+plot(p)
+```
+でもエリアの重複が鬱陶しいので、geom_line関数を使うのも一つの手段。
+```{r}
+p <- ggplot(data = midwest,
+            mapping = aes(x = percollege, color = state)) +
+  geom_line(stat = 'density')
+plot(p)
+```
+
+### 4.7 不要な変換を避ける
+ここまでは、個別のデータをgeom_関数が自動で要約してくれていたが、データによっては、すでに要約済みの値のみ公開されていることもある。
+
+```{r}
+library(socviz)
+head(titanic)
+```
+
+```{r}
+p <- ggplot(data = titanic,
+            mapping = aes(x = fate, y = percent, fill = sex)) +
+  geom_bar(position = 'dodge', # 性別別に横にバーを並べよ
+           stat = 'identity') + # 集計は行わないぞ
+  theme(legend.position = 'top')
+plot(p)
+```
+oecd_sumでも見てやろう
+```{r}
+p <- ggplot(data = oecd_sum,
+            mapping = aes(x = fate, y = percent, fill = sex)) +
+  geom_bar(position = 'dodge', # 性別別に横にバーを並べよ
+           stat = 'identity') + # 集計は行わないぞ
+  theme(legend.position = 'top')
+plot(p)
+```
