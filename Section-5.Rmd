@@ -1,0 +1,497 @@
+---
+title: "第5章 データの整形・ラベル・メモの追加"
+author: "Haga, Chihiro"
+date: '2022-07-20'
+output: html_document
+---
+
+今日やること！
+
+-   ggplotにデータを渡す前に、データ自身を適切な形に整形するために、dplyrパッケージを使ってデータの抽出・要約・変換を学ぶ
+
+```{=html}
+<!-- -->
+```
+-   使えるgeom関数を増やす
+
+-   段階的に図をカスタマイズするために、scale_関数、guides()関数、theme()関数を使えるようにする
+
+## 5.1 パイプを使ったデータの集計
+
+### Overview
+
+General social Survey (GSS: 総合的社会調査) からえられた信仰と居住地域の分布のデータをつかう。
+
+```{r gss_sm-data}
+library(tidyverse)
+library(socviz)
+knitr::kable(head(gss_sm)) # こうすると表がいい感じに描画されるよ
+```
+
+作業のフローは以下の通り 1. 居住地域と信仰に関する2500人のgss_smデータセットをロードする 1. 地域別の各信仰の信徒数を集計 1. 地域における信徒数のパーセンテージを算出
+
+### 「パイプ演算子 %\>% 」を使ってデータを集計するぞ
+
+%\>% は、あるデータフレームを別のデータフレームに集計・変換するためのパイプライン操作に使う演算子。データはパイプの片側から入り、dplyrの関数で加工されたあと、もう一方の側から加工済みのデータとして出力される。できることは、
+
+1.  **group_by**()関数で、要約に必要なネスト構造のデータをグループ化する
+2.  **filter**()やselct()関数で、行・列、あるいはその両方でデータを抽出する
+3.  **mutate**()関数で、グループ化済みのデータに基づいて、新しい変数を作成・追加し、集計を解することなく新たな変数を表に追加できる
+4.  **summarize**()関数で、グループ化されたデータのまとめ・集計を行う。グループ別の平均、個数とか。
+
+### 早速使ってみよう
+
+「gss_smデータセットから、region別・religion別の信徒数を求めたい」
+
+```{r 1st-trial}
+rel_by_region <- 
+  # gss_smの2500人のデータを、
+  gss_sm %>% 
+  # regionとreligごとにデータをグループに分けて、
+  group_by(bigregion, religion) %>% 
+  # グループ別の人数を集計して、
+  summarize(N = n()) %>% 
+  # 全体の人数に占める割合とパーセンテージを計算する
+  mutate(freq = N / sum(N),
+         pct = round((freq * 100), 0))
+rel_by_region
+```
+
+「パーセンテージをbigregion別に集計して、100%になることを確認したい」
+
+```{r}
+rel_by_region %>% 
+  # regionごとにデータをグループに分けて、
+  group_by(bigregion) %>% 
+  # pctの合計が100になることを確認
+  summarize(total = sum(pct))
+```
+
+ではこれをプロットしてみよう。
+
+```{r fig5.2}
+p <- ggplot(rel_by_region,
+            aes(x = bigregion,
+                y = pct,
+                fill = religion)) +
+  geom_col(position = 'dodge2') + # dodgeはぴったりくっつく、dodge2はバーの間にスペースが開く
+  labs(x = 'Region', y = 'Percent', fill = 'Religion') +
+  theme(legend.position = 'top')
+p
+```
+
+バーがたくさん並んでいて混沌とした図を作り替えよう。手始めに、facet関数でbigregionごとにパネルを分けて、宗派をy軸にとり、横棒グラフにしてみるか。
+
+Tips: cood_flip()で、x-y軸を入れ替えることができる
+
+```{r fig5.3}
+p <- ggplot(rel_by_region,
+            aes(x = religion,
+                y = pct,
+                fill = religion)) +
+  geom_col(position = 'dodge2') +
+  labs(x = 'Region', y = 'Percent', fill = 'Religion') +
+  guides(fill = 'none') +
+  coord_flip() +
+  facet_grid(~ bigregion) +
+  theme(legend.position = 'top')
+p
+```
+
+## 5.2 グループ化・カテゴリ化された連続変数の取り扱い
+
+「17カ国のOECD諸国における、移植のための臓器提供意思に関する時系列データをプロットせよ。」
+
+まずは、データセットの中身をランダムに10行分見てみる。
+
+```{r}
+organdata %>% 
+  select(1:6) %>% 
+  slice_sample(n = 10)
+```
+
+### まずはbar plot, box plot, violin plotを試してみる
+
+Trial 1. まずは年に対するドナーの数を散布図で示してみようか。
+
+Check!: 警告の中身を読むべし。
+
+```{r}
+p <- ggplot(data = organdata,
+            mapping = aes(x = year, y = donors)) +
+  geom_point()
+p
+```
+
+Trial 2. 次は国別に時系列の変化を可視化してみようか。
+
+```{r}
+p <- ggplot(data = organdata,
+            mapping = aes(x = year, y = donors)) +
+  geom_line(aes(group = country)) +
+  facet_wrap(~ country)
+p
+```
+
+Trial 3. 国ごとの臓器提供者数のばらつきを可視化してみようか。
+
+```{r}
+p <- ggplot(data = organdata,
+            mapping = aes(x = country, y = donors)) +
+  geom_boxplot()
+p
+```
+
+うわあ、x軸がつぶれている・・・のでx-y軸をflipしてみようか
+
+```{r}
+p <- ggplot(data = organdata,
+            mapping = aes(x = country, y = donors)) +
+  geom_boxplot() +
+  coord_flip()
+p
+```
+
+データの表示順には拘りたい。今はデフォルトでアルファベット順なので、臓器提供者数が多い順に並べてみるのは良いアイディアかも。
+
+```{r}
+p <- ggplot(data = organdata,
+            mapping = aes(x = reorder(country, donors, na.rm = TRUE), 
+                          y = donors)) +
+  geom_boxplot() +
+  labs(x = NULL) +
+  coord_flip()
+p
+```
+
+色をつけることも可能。
+
+```{r}
+p <- ggplot(data = organdata,
+            mapping = aes(x = reorder(country, donors, na.rm = TRUE), 
+                          y = donors,
+                          fill = world)) +
+  geom_boxplot() +
+  labs(x = NULL) +
+  coord_flip() +
+  theme(legend.position = 'top')
+p
+```
+
+violin plotにもすぐ変更できる。
+
+```{r}
+p <- ggplot(data = organdata,
+            mapping = aes(x = reorder(country, donors, na.rm = TRUE), 
+                          y = donors,
+                          fill = world)) +
+  geom_violin() +
+  labs(x = NULL) +
+  coord_flip() +
+  theme(legend.position = 'top')
+p
+```
+
+ここまで試してきたように、カテゴリカル変数をy軸、x軸で連続量の分布を確認することは強力な可視化手法の一つ。
+
+### Jitter plotを試してみる
+
+データ数が多くないならば、観測値を直接表示するのも良い。しかし・・・
+
+```{r}
+p <- ggplot(data = organdata,
+            mapping = aes(x = reorder(country, donors, na.rm = TRUE), 
+                          y = donors,
+                          color = world)) +
+  geom_point() +
+  labs(x = NULL) +
+  coord_flip() +
+  theme(legend.position = 'top')
+p
+```
+
+観測点が重なって見えなくなってしまうので、geom_jitter() 関数で、観測点に揺らぎを持たせる。
+
+```{r}
+p <- ggplot(data = organdata,
+            mapping = aes(x = reorder(country, donors, na.rm = TRUE), 
+                          y = donors,
+                          color = world)) +
+  geom_jitter() +
+  labs(x = NULL) +
+  coord_flip() +
+  theme(legend.position = 'top')
+p
+```
+
+もうすこし揺らぎを小さくすると見やすい。
+
+```{r}
+p <- ggplot(data = organdata,
+            mapping = aes(x = reorder(country, donors, na.rm = TRUE), 
+                          y = donors,
+                          color = world)) +
+  geom_jitter(width = 0.15) +
+  labs(x = NULL) +
+  coord_flip() +
+  theme(legend.position = 'top')
+p
+```
+
+### Cleveland dotplotもいいぞ
+
+さらに、Cleveland dotplotはシンプルで効果的な可視化手法なので試してみよう。
+
+まずは、国別に平均・標準偏差を求めよう。
+
+```{r}
+by_country <- organdata %>% 
+  group_by(consent_law, country) %>% 
+  summarize(donors_mean = mean(donors, na.rm = TRUE),
+            donors_sd = sd(donors, na.rm = TRUE),
+            gdp_mean = mean(gdp, na.rm = TRUE),
+            health_mean = mean(health, na.rm = TRUE),
+            roads_mean = mean(roads, na.rm = TRUE),
+            cerebval_mean = mean(cerebvas, na.rm = TRUE))
+
+by_country
+```
+
+発展的な内容ですが、すっきりと書くには、こうすると良い。
+
+```{r}
+by_country <- organdata %>% 
+  group_by(consent_law, country) %>% 
+  summarize(across(is.numeric, list(mean = mean, sd = sd), na.rm = TRUE))
+
+by_country
+```
+
+まずは平均値だけを表示してみる。
+
+```{r}
+p <- ggplot(data = by_country,
+            mapping = aes(x = donors_mean, 
+                          y = reorder(country, donors_mean, na.rm = TRUE),
+                          color = consent_law)) +
+  geom_point(size = 3) +
+  labs(x = 'Donor Procurent Rate',
+       y = '', color = 'Consent Law') +
+  theme(legend.position = 'top')
+p
+```
+
+facetすることもできるが・・・
+
+```{r}
+p <- ggplot(data = by_country,
+            mapping = aes(x = donors_mean, 
+                          y = reorder(country, donors_mean, na.rm = TRUE),
+                          color = consent_law)) +
+  geom_point(size = 3) +
+  labs(x = 'Donor Procurent Rate',
+       y = '', color = 'Consent Law') +
+  theme(legend.position = 'top') +
+  facet_wrap(~ consent_law, ncol = 1)
+p
+```
+
+全てのx軸のカテゴリが表示されてしまうので、パネルごとに、x/y軸で表示位する範囲を帰るために、scales = 'free'引数を指定する。
+
+```{r}
+p <- ggplot(data = by_country,
+            mapping = aes(x = donors_mean, 
+                          y = reorder(country, donors_mean, na.rm = TRUE),
+                          color = consent_law)) +
+  geom_point(size = 3) +
+  labs(x = 'Donor Procurent Rate',
+       y = '', color = 'Consent Law') +
+  theme(legend.position = 'top') +
+  facet_wrap(~ consent_law, scales = 'free_y', ncol = 1)
+p
+```
+
+クリーブランドドットプロットは、モデルの要約や、誤差を含んだ結果を示す際に、一般的にたて棒グラフ・横棒グラフよりこのまれる。誤差範囲を示したければ、geom_poitrangeが便利。
+
+```{r}
+p <- ggplot(data = by_country,
+            mapping = aes(x = reorder(country, donors_mean, na.rm = TRUE), 
+                          y = donors_mean)) +
+  geom_pointrange(aes(ymin = donors_mean - donors_sd,
+                      ymax = donors_mean + donors_sd)) +
+  labs(x = '',
+       y = 'Donor Procurent Rate', color = 'Consent Law') +
+  theme(legend.position = 'top') +
+  coord_flip()
+p
+```
+
+## 5.3 図にテキストを直接描画する
+
+geom_text関数を使うと、こんなこともできる
+
+-   散布図でプロットした点にラベルをつける
+
+-   図の中に有益な説明を表記する
+
+```{r}
+p <- ggplot(data = by_country,
+            mapping = aes(x = roads_mean, y = donors_mean)) +
+  geom_point() +
+  geom_text(mapping = aes(label = country))
+p
+```
+
+geom_text関数のhjust引数を調節し、テキストの位置を調整するとよい。
+
+```{r}
+p <- ggplot(data = by_country,
+            mapping = aes(x = roads_mean, y = donors_mean)) +
+  geom_point() +
+  geom_text(mapping = aes(label = country),
+            hjust = -0.1)
+p
+```
+
+とはいえ調整が難しいし、重なってしまうのは回避できていない。代わりにggrepelパッケージを使うと良いぞ。
+
+```{r}
+library(ggrepel)
+p <- ggplot(data = by_country,
+            mapping = aes(x = roads_mean, y = donors_mean)) +
+  geom_point() +
+  geom_text_repel(mapping = aes(label = country))
+p
+```
+
+## 5.4 特定のデータへのラベリング
+
+データ内の関心のある点のみにラベルをつけることを考えよう。
+
+GDP \> 25000の国だけラベルをつける。
+
+```{r}
+p <- ggplot(data = by_country,
+            mapping = aes(x = gdp_mean, y = health_mean)) +
+  geom_point() +
+  geom_text_repel(data = subset(by_country, gdp_mean > 25000),
+                  mapping = aes(label = country)) +
+  geom_vline(xintercept = 25000, color = 'grey')
+p
+```
+
+GDP \> 25000またはhealth \< 1500またはcountryが"Belgium"の国だけラベルをつける。
+
+```{r}
+p <- ggplot(data = by_country,
+            mapping = aes(x = gdp_mean, y = health_mean)) +
+  geom_point() +
+  geom_text_repel(data = subset(by_country, 
+                                gdp_mean > 25000 | health_mean < 1500 |
+                                  country %in% c('Belgium')),
+                  mapping = aes(label = country)) +
+  geom_vline(xintercept = 25000, color = 'grey') +
+  geom_hline(yintercept = 1500, color = 'grey')
+p
+```
+
+## 5.5 図内への描画と書き込み
+
+```{r}
+p <- ggplot(data = organdata, 
+            mapping = aes(x = roads, y = donors)) +
+  geom_point() +
+  annotate(geom = 'text',
+           x = 157, y = 33,
+           label = 'A surprisingly high \n recovery rate.',
+           hjust = 0)
+p
+```
+
+```{r}
+p <- ggplot(data = organdata, 
+            mapping = aes(x = roads, y = donors)) +
+  geom_point() +
+  annotate(geom = 'text',
+           x = 157, y = 33,
+           label = 'A surprisingly high \n recovery rate.',
+           hjust = 0) +
+  annotate(geom = 'rect',
+           xmin = 125, xmax = 155,
+           ymin = 30, ymax = 35,
+           fill = 'red',
+           alpha = 0.2)
+p
+```
+
+## 5.6 scale_関数、guides()関数関数
+
+```{r}
+p <- ggplot(data = organdata,
+            mapping = aes(x = roads,
+                          y = donors,
+                          color = world)) +
+  geom_point()
+p
+```
+
+### scale_関数でできること
+
+-   scale\_\<mapping\>\_\<kind\>()というのが、scale関数の命名規則
+
+-   よく出てくるのは
+
+    -   scale_color\_\<kind\>() / scale_color\_\<kind\>(): 色や塗りつぶしの調整
+
+    -   scale_x\_\<kind\>() / scale_y\_\<kind\>(): x軸やy軸の調整
+
+#### 軸を調整したい
+
+```{r}
+p <- ggplot(data = organdata,
+            mapping = aes(x = roads,
+                          y = donors,
+                          color = world)) +
+  geom_point() +
+  scale_x_log10() +
+  scale_y_continuous(breaks = c(5, 15, 25),
+                     labels = c('Five', 'Fifteen', 'Twenty Five'))
+p
+```
+
+colorのラベルを変えたい
+
+```{r}
+p <- ggplot(data = organdata,
+            mapping = aes(x = roads,
+                          y = donors,
+                          color = world)) +
+  geom_point() +
+  scale_x_log10() +
+  scale_y_continuous(breaks = c(5, 15, 25),
+                     labels = c('Five', 'Fifteen', 'Twenty Five')) +
+  scale_color_discrete(labels = c('Corporatist', 'Liberal',
+                                  'Social Democratic', 'Unclassified')) +
+  labs(x = 'Road Deaths', y = 'Donor Procurement', color = 'Welfare State')
+p
+```
+
+### guides関数でできること
+
+ときには凡例を削除したくなることもある。
+
+```{r}
+p <- ggplot(data = organdata,
+            mapping = aes(x = roads,
+                          y = donors,
+                          color = world)) +
+  geom_point() +
+  scale_x_log10() +
+  scale_y_continuous(breaks = c(5, 15, 25),
+                     labels = c('Five', 'Fifteen', 'Twenty Five')) +
+  scale_color_discrete(labels = c('Corporatist', 'Liberal',
+                                  'Social Democratic', 'Unclassified')) +
+  labs(x = 'Road Deaths', y = 'Donor Procurement', color = 'Welfare State') +
+  guides(color = 'none')
+p
+```
