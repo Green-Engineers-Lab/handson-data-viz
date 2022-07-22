@@ -1,0 +1,472 @@
+---
+title: "第7章 地図を描画する"
+author: "Haga, Chihiro"
+date: '2022-07-22'
+output: html_document
+---
+
+今日やること！
+
+-   ggplotでベクター形式のGISデータを可視化する
+
+-   ggplotでラスター形式のGISデータを可視化する
+
+## 7.1 アメリカ合衆国の州単位での地図
+
+### まずはプロットしたいデータの確認から
+
+2016年のアメリカ大統領選挙の、州ごとの投票率および各得票数に関する変数のデータを可視化する。
+
+```{r }
+library(tidyverse)
+library(socviz)
+
+election %>% 
+  select(fips, state, total_vote, r_points, pct_trump, party, census) %>% 
+  slice_sample(n = 5)
+```
+
+FIPS (federal information processin standard) コードは、州・準州に割り当てられる連邦情報処理標準による番号。
+
+```{r}
+party_colors <- c('#2E74C0', '#CB454A')
+p0 <- ggplot(data = subset(election, st %nin% 'DC'),
+             mapping = aes(x = r_points, 
+                           y = reorder(state, r_points),
+                           color = party)) +
+  geom_vline(xintercept = 0, color = 'grey30') +
+  geom_point(size = 2)
+p0
+```
+
+```{r}
+p1 <- p0 +
+  scale_color_manual(values = party_colors) +
+  scale_x_continuous(breaks = c(-30, -20, -10, 0, 10, 20, 30, 40),
+                     labels = c('30\n(Clinton)', '20', '10', '0',
+                                '10', '20', '30', '40\n(Trump)')) +
+  facet_wrap(~census, ncol = 1, scales = 'free_y') +
+  guides(color = 'none') +
+  labs(x = 'Point Margin', y = '') +
+  theme(axis.text = element_text(size = 8)) +
+  theme_bw()
+p1
+```
+
+**「空間データを必ずしも空間構造として表現しなくても良い」**
+
+### 地図上で描画しよう
+
+```{r}
+library(maps)
+us_states <- map_data('state')
+class(us_states)
+str(us_states)
+head(us_states)
+dim(us_states)
+```
+
+まずは白地図を書く。
+
+```{r}
+p <- ggplot(data = us_states,
+            mapping = aes(x = long, y = lat, 
+                          group = group)) +
+  geom_polygon(fill = 'white', color = 'black')
+p
+```
+
+州ごとに色分けしたコロプレス図を描いてみる。
+
+```{r}
+p <- ggplot(data = us_states,
+            mapping = aes(x = long, y = lat, 
+                          group = group,
+                          fill = region)) +
+  geom_polygon(color = 'grey90', size = 0.1) +
+  guides(fill = 'none')
+p
+```
+
+デフォルトではメルカトル図法で書かれているが、広域のGISデータの描画では歪みが生じる。アルベルス正積円錐図法を使うことで、面積の比率が正しくなる。
+
+```{r}
+p <- ggplot(data = us_states,
+            mapping = aes(x = long, y = lat, 
+                          group = group,
+                          fill = region)) +
+  geom_polygon(color = 'grey90', size = 0.1) +
+  coord_map(projection = 'albers', lat0 = 39, lat1 = 45) + # lat0, lat1はアメリカの場合のデフォルト
+  guides(fill = 'none')
+p
+```
+
+### 選挙のデータを、left_join()関数で地図データに結合する
+
+先程の州ごとのデータに、州名をキーにして、選挙関連の統計情報をdplyr::left_join()関数で結合する。
+
+```{r}
+head(election)
+head(us_states)
+
+# electionの州名を、us_statesと同様に全て小文字に変換する
+# <-- よくある変換。そしてエラーが出やすい
+election$region <- tolower(election$state)
+
+# region列をキーにして、us_statesデータにelectionデータを結合する。
+#   left_join(): 左のus_statesデータを優先して、electionデータを結合する
+#   right_join(): 右のelectionデータを優先して、us_statesデータを結合する
+#   inner_join(): us_statesとelectionデータに共通する列だけ結合する
+#   full_join(): どちらか一方に含まれる列が結合される。存在しない列はNAになる
+us_states_elec <- left_join(us_states, election, by = 'region')
+head(us_states_elec)
+```
+
+### 結合済みのデータを描画しよう
+
+選挙結果で共産党と民主党のどちらが勝利したのかを可視化してみる。
+
+```{r}
+p <- ggplot(data = us_states_elec,
+            aes(x = long, y = lat,
+                group = group,
+                fill = party)) +
+  geom_polygon(color = 'grey90', size = 0.1) +
+  coord_map(projection = 'albers', lat0 = 39, lat1 = 45)
+p
+```
+
+最初の作図の色と揃えてみる。ついでに見た目をcowplot::theme_map()で調整
+
+```{r}
+library(cowplot)
+p <- ggplot(data = us_states_elec,
+            aes(x = long, y = lat,
+                group = group,
+                fill = party)) +
+  geom_polygon(color = 'grey90', size = 0.1) +
+  coord_map(projection = 'albers', lat0 = 39, lat1 = 45) +
+  scale_fill_manual(values = party_colors) +
+  labs(title = 'Election Results 2016',
+       fill = NULL) +
+  theme_map() +
+  theme(legend.position = 'bottom')
+p
+```
+
+ドナルド・トランプ氏の得票率を示してみる
+
+```{r}
+p <- ggplot(data = us_states_elec,
+            aes(x = long, y = lat,
+                group = group,
+                fill = pct_trump)) +
+  geom_polygon(color = 'grey90', size = 0.1) +
+  coord_map(projection = 'albers', lat0 = 39, lat1 = 45) +
+  scale_fill_gradient(low = 'white',
+                      high = '#CB454A') +
+  labs(title = 'Trump vote',
+       fill = 'Percent',
+       fill = NULL) +
+  theme_map() +
+  theme(legend.position = 'bottom')
+p
+```
+
+対立する2党への投票の結果を、中間点から分岐する配色で示してみる。
+
+パターン1. 中間色を白にする。
+
+```{r}
+p0 <- ggplot(data = us_states_elec,
+            aes(x = long, y = lat,
+                group = group,
+                fill = d_points)) +
+  geom_polygon(color = 'grey90', size = 0.1) +
+  coord_map(projection = 'albers', lat0 = 39, lat1 = 45) +
+  labs(title = 'Winning margins',
+       fill = 'Percent') +
+  theme_map() +
+  theme(legend.position = 'bottom')
+
+p1 <- p0 +
+  scale_fill_gradient2()
+p1
+```
+
+パターン2: 中間を紫
+
+```{r}
+p2 <- p0 + 
+  scale_fill_gradient2(low = party_colors[2],
+                       mid = scales::muted('purple'),
+                       high = party_colors[1],
+                       breaks = c(-25, 0, 25, 50, 75))
+p2
+```
+
+パターン3: 民主党が強い基盤を持っているワシントンD.C.を除外して可視化
+
+```{r}
+p3 <- ggplot(data = filter(us_states_elec, region %nin% 'district of columbia'),
+            aes(x = long, y = lat,
+                group = group,
+                fill = d_points)) +
+  geom_polygon(color = 'grey90', size = 0.1) +
+  coord_map(projection = 'albers', lat0 = 39, lat1 = 45) +
+  scale_fill_gradient2(low = party_colors[2],
+                       mid = scales::muted('purple'),
+                       high = party_colors[1],
+                       breaks = c(-25, 0, 25, 50, 75)) +
+  labs(title = 'Winning margins',
+       fill = 'Percent') +
+  theme_map() +
+  theme(legend.position = 'bottom')
+
+p3
+```
+
+コロプレス図は、マッピングしている変数を部分的にしか表現できない。地図＋地図に頼らない可視化はセットで作ると良い。
+
+## さて、自分のGISデータで可視化するにはどうしたらいい？
+
+### 従来: 方法はほぼ選択の余地なし
+
+-   ポリゴンデータ
+
+    -   spパッケージ
+
+-   ラスタデータ
+
+    -   rasterパッケージ
+
+### 現在: 特にラスタデータのパッケージが乱立中
+
+-   ポリゴンデータ
+
+    -   sfパッケージ
+
+-   ラスタデータ
+
+    -   terraパッケージ
+
+    -   starsパッケージ
+
+### というわけでみんな迷っている
+
+<https://notchained.hatenablog.com/entry/2020/09/20/205301>
+
+<https://www.r-bloggers.com/2021/05/a-comparison-of-terra-and-stars-packages/>
+
+### 芳賀の経験から・・・
+
+「自分が分析で使いたいパッケージに合わせて、ポリゴン・ラスタデータを扱うパッケージを選ぶと良い。」
+
+-   tidyverseパッケージと相性がいいのはsfパッケージ & starsパッケージ (同じ作者です)
+
+-   terraパッケージは従来のrasterパッケージの作者が開発したもので、ほぼ同じ機能が実装されているし、関数も豊富。
+
+-   ややこしい作業をしないならばsf + starsでよいかも。
+
+-   もし高度なラスタ演算が必要ならば、terraパッケージでラスタ演算--\>starsで描画、という流れが良いかもね。
+
+「自分が分析で使いたいパッケージに合わせて」ってどういうこと？
+
+-   分析で使いたいパッケージの仕様書に書かれている関数のヘルプを読むのです。
+
+    - 例えば、景観分析でよく使うlandscapemetricsパッケージのcalculate_lsm()関数は、argumentsとして、Raster Layer, Stack, Brick, SpatRaster (terra), stars, or a list of rasterLayersを取れるので、terraでもstarsでも、rasterでも大丈夫。
+    
+    - (https://cran.r-project.org/web/packages/landscapemetrics/index.html)
+
+## 7.alpha 日本のGISデータを可視化してみようか
+
+### 北摂の行政区域のデータをRで可視化してみる
+
+- データソース: 国土数値情報ダウンロードサービス 行政区域データ 大阪府 令和4年度 (https://nlftp.mlit.go.jp/ksj/gml/datalist/KsjTmplt-N03-v3_1.html)
+
+```{r}
+library(sf)
+city_boundary <- sf::st_read(here::here('data', 
+                                        'N03-20220101_27_GML', 
+                                        'N03-22_27_220101.shp'))
+class(city_boundary)
+summary(city_boundary)
+glimpse(city_boundary)
+```
+
+北摂の市町村のみ抽出してみる
+```{r}
+hokusetsu <- c('豊中市', '池田市', '箕面市', '能勢町', '豊能町',
+               '吹田市', '高槻市', '茨木市', '摂津市', '島本町')
+hokusetsu_city_boundary <- city_boundary %>% 
+  filter(N03_004 %in% hokusetsu)
+hokusetsu_city_boundary
+```
+
+ggplotで市町村名ごとに可視化してみる。日本語が含まれるので、https://github.com/Gedevan-Aleksizde/fontregisterer を参考にしてfontregistererパッケージをインストールしておく。
+
+```{r}
+library(fontregisterer)
+sans <- fontregisterer::get_standard_ja_fonts()['sans']
+p_hokusetsu <- ggplot(data = hokusetsu_city_boundary,
+                      mapping = aes(fill = N03_004)) +
+  geom_sf() +
+  scale_fill_grey() +
+  theme_minimal() +
+  labs(fill = '市町村') +
+  theme(text = element_text(family = sans), 
+        axis.text.x = element_text(angle = 45, hjust = 1))
+p_hokusetsu
+```
+
+### 北摂周辺の土地利用ラスタデータをプロットしてみる。
+- データソース: 国土数値情報ダウンロードサービス 土地利用細分メッシュ（ラスタ版）
+(https://nlftp.mlit.go.jp/ksj/gml/datalist/KsjTmplt-L03-b_r.html)
+
+まずはデータを読み込む。
+```{r}
+library(stars)
+lulc <- stars::read_stars(here::here('data', 'L03-b-14_5235', 'L03-b-14_5235.tif'))
+lulc
+```
+
+
+まずはプロットしてみる。
+```{r}
+p_lulc <- ggplot() +
+  geom_stars(data = lulc) +
+  scale_fill_manual(values = c('yellow', 'beige', 'springgreen3', 'orange', 'red',
+                               'grey30', 'grey70', 'brown', 'blue', 'lightyellow',
+                               'lightblue', 'lightgreen', 'white'),
+                    labels = c('田', 'その他の農用地', '森林', '荒地', '建物用地',
+                               '道路', '鉄道', 'その他の用地', '河川地および湖沼',
+                               '海浜', '海水域', 'ゴルフ場', '解析対象外')) +
+  theme_minimal() +
+  labs(fill = '土地利用') +
+  theme(text = element_text(family = sans), 
+        axis.text.x = element_text(angle = 45, hjust = 1))
+p_lulc
+```
+
+### 北摂周辺の行政区域データと土地利用ラスタデータの重ね合わせ
+
+まず、市町村界を、rasterデータと同じJGD2000に投影変換する
+```{r}
+hokusetsu_city_boundary_proj <- sf::st_transform(hokusetsu_city_boundary, 
+                                                 crs = sf::st_crs(lulc))
+hokusetsu_city_boundary_proj
+```
+
+北摂の範囲だけの土地利用データにするために、lulcをclipする
+
+```{r}
+hokusetsu_lulc <- sf::st_crop(lulc, hokusetsu_city_boundary_proj)
+# ちょっと可視化したいだけならこれで十分
+plot(hokusetsu_lulc)
+```
+
+では、オーバーレイしてみよう。
+
+```{r}
+p_hokusetsu_lulc <- ggplot() +
+  # ラスタデータの描画
+  geom_stars(data = hokusetsu_lulc) +
+  scale_fill_manual(values = c('yellow', 'beige', 'springgreen3', 'orange', 'red',
+                               'grey30', 'grey70', 'brown', 'blue', 'lightyellow',
+                               'lightblue', 'lightgreen', 'white'),
+                    labels = c('田', 'その他の農用地', '森林', '荒地', '建物用地',
+                               '道路', '鉄道', 'その他の用地', '河川地および湖沼',
+                               '海浜', '海水域', 'ゴルフ場', '解析対象外'),
+                    na.value = NA) +
+  theme_minimal() +
+  # ベクタデータの描画
+  geom_sf(data = hokusetsu_city_boundary,
+          fill = NA, color = 'black', size = .5) +
+  # プロットの調整
+  theme_minimal() +
+  labs(fill = '土地利用') +
+  theme(text = element_text(family = sans), 
+        axis.text.x = element_text(angle = 45, hjust = 1))
+p_hokusetsu_lulc
+```
+
+### 市町村ごとの土地利用の割合を計算してみる
+
+ラスタデータの各グリッドに、hokusetsu_city_boundary_projの市町村名の情報を空間結合する。
+```{r}
+lulc_joined <- st_join(hokusetsu_lulc, hokusetsu_city_boundary_proj)
+```
+
+空間結合した市町村名で各グリッドをグループ分けして、市町村ごとの土地利用を集計する。
+```{r}
+lulc_joined_df <- 
+  # ラスタデータ変換し、
+  # 1行に1グリッドの土地利用・市町村名が格納されたtibble形式のデータフレームを作成する
+  as.data.frame(lulc_joined) %>% 
+  tibble() %>% 
+  # 土地利用が格納された列名をlulcに変更
+  rename(lulc = L03.b.14_5235.tif) %>% 
+  # 市町村名がNAではないグリッドだけ抽出
+  filter(!is.na(N03_004) & !is.na(lulc)) %>% 
+  # 市町村ごとに土地利用クラスを集計
+  group_by(N03_004, lulc) %>% 
+  summarise(N = n()) %>% 
+  # 土地利用クラスのIDを名前に変換
+  mutate(lulcname = case_when(lulc == 10 ~ '田', 
+                              lulc == 20 ~ 'その他の農用地', 
+                              lulc == 50 ~ '森林', 
+                              lulc == 60 ~ '荒地', 
+                              lulc == 70 ~ '建物用地',
+                              lulc == 91 ~ '道路', 
+                              lulc == 92 ~ '鉄道', 
+                              lulc == 100 ~ 'その他の用地', 
+                              lulc == 110 ~ '河川地および湖沼',
+                              lulc == 140 ~ '海浜', 
+                              lulc == 150 ~ '海水域', 
+                              lulc == 160 ~ 'ゴルフ場', 
+                              lulc == 255 ~ '解析対象外',
+                              TRUE ~ as.character(NA)))
+```
+
+さあ、プロットしようか。
+```{r}
+p_lulc_bar <- ggplot(data = lulc_joined_df, 
+                     mapping = aes(x = N, y = reorder(lulcname, N),
+                                   fill = lulc)) +
+  geom_bar(stat = 'identity') +
+  scale_fill_manual(values = c('yellow', 'beige', 'springgreen3', 'orange', 'red',
+                               'grey30', 'grey70', 'brown', 'blue', 'lightyellow',
+                               'lightblue', 'lightgreen', 'white'),
+                    labels = c('田', 'その他の農用地', '森林', '荒地', '建物用地',
+                               '道路', '鉄道', 'その他の用地', '河川地および湖沼',
+                               '海浜', '海水域', 'ゴルフ場', '解析対象外'),
+                    na.value = NA) +
+  theme_bw() +
+  facet_wrap(~N03_004) +
+  theme(text = element_text(family = sans)) +
+  labs(x = 'グリッド数', y = '土地利用区分') +
+  guides(fill = 'none')
+p_lulc_bar
+```
+
+
+## 最後に・・・R関係で困った時には
+
+1. パッケージのヘルプを見に行く ("[package name] package")
+
+  - 時々vignet == tutorialが見つかることも
+
+1. チュートリアルとかムックを探す
+
+  - https://keen-swartz-3146c4.netlify.app/ みたいなやつ
+
+1. 素直にgoogle検索 ("[package name] package" AND "[error message]")
+
+1. 日本国内なら TokyoR に参加してみる https://tokyor.connpass.com/
+
+1. @hagachi に聞いてみる
+  
+  - やりたかったことの説明+コード+データ+エラーメッセージのスクショの3テンセットを送ってくれたらお手伝いできます
+  
+## Enjoy your data analysis!
+チュートリアル&あなた自身のデータでまずは手を動かしてみて、たくさんのエラーと最後の成功体験を楽しんでくださいな。
